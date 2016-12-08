@@ -1,0 +1,38 @@
+{
+  "name": "tab-elect",
+  "version": "1.0.0",
+  "description": "Leader election for browser tabs and workers",
+  "main": "index.js",
+  "scripts": {
+    "standard": "standard",
+    "test": "standard && zuul --local -- test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xuset/tab-elect.git"
+  },
+  "keywords": [
+    "leader",
+    "election",
+    "browser",
+    "tab",
+    "worker",
+    "consensus"
+  ],
+  "author": "xuset",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/xuset/tab-elect/issues"
+  },
+  "homepage": "https://github.com/xuset/tab-elect#readme",
+  "devDependencies": {
+    "standard": "^8.6.0",
+    "tape": "^4.6.3",
+    "zuul": "^3.11.1"
+  },
+  "standard": {
+    "globals": [
+      "BroadcastChannel"
+    ]
+  }
+}
