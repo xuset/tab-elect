@@ -1,3 +1,4 @@
+/* eslint-env browser */
 
 module.exports = TabElect
 
@@ -22,20 +23,30 @@ function TabElect (name, opts) {
   self.electedTerm = 0
   self.destroyed = false
 
-  self._db = new IdbKvStore(name)
-  self._db.on('change', function (change) {
-    self._onDbChange(change)
-  })
+  self._db = new IdbKvStore('tab-elect-' + name)
+  self._db.on('change', onDbChange)
+  self._db.on('error', onDbError)
+  self._db.on('close', onDbClose)
 
-  self._db.on('error', function (err) {
-    self._destroy(err)
-  })
-
-  self._db.on('close', function () {
-    self._destroy(new Error('IDB database unexpectedly closed'))
-  })
+  addEventListener('beforeunload', onBeforeUnload)
 
   self.elect()
+
+  function onDbChange (change) {
+    self._onDbChange(change)
+  }
+
+  function onDbError (err) {
+    self._destroy(err)
+  }
+
+  function onDbClose () {
+    self._destroy(new Error('IDB database unexpectedly closed'))
+  }
+
+  function onBeforeUnload () {
+    self._destroy()
+  }
 }
 
 TabElect.prototype._onDbChange = function (change) {
