@@ -26,6 +26,7 @@
   },
   "homepage": "https://github.com/xuset/tab-elect#readme",
   "devDependencies": {
+    "browserify": "^13.3.0",
     "standard": "^8.6.0",
     "tape": "^4.6.3",
     "zuul": "^3.11.1"
@@ -34,5 +35,8 @@
     "globals": [
       "BroadcastChannel"
     ]
+  },
+  "dependencies": {
+    "idb-kv-store": "^3.2.1"
   }
 }
