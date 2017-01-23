@@ -44,6 +44,36 @@ test('two at a time', function (t) {
   }
 })
 
+test('explicit elect', function (t) {
+  t.timeoutAfter(3000)
+  var e1 = TabElect('foo')
+  var e2 = TabElect('foo')
+
+  e1.on('elected', function () {
+    e2.removeAllListeners()
+    e2.elect(function (err, elected) {
+      t.equal(err, null)
+      t.equal(elected, true)
+      t.equal(e2.isLeader, true)
+      e1.destroy()
+      e2.destroy()
+      t.end()
+    })
+  })
+
+  e2.on('elected', function () {
+    e1.removeAllListeners()
+    e1.elect(function (err, elected) {
+      t.equal(err, null)
+      t.equal(elected, true)
+      t.equal(e1.isLeader, true)
+      e1.destroy()
+      e2.destroy()
+      t.end()
+    })
+  })
+})
+
 test('auto elect after leader is destroyed', function (t) {
   t.timeoutAfter(3000)
   var e1 = TabElect('foo')
