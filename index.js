@@ -19,9 +19,9 @@ function TabElect (name, opts) {
   EventEmitter.call(self)
 
   self.isLeader = false
-  self.currentTerm = 0
-  self.electedTerm = 0
   self.destroyed = false
+
+  self._locking = false
 
   self._db = new IdbKvStore('tab-elect-' + name)
   self._db.on('change', onDbChange)
@@ -49,73 +49,44 @@ function TabElect (name, opts) {
   }
 }
 
-TabElect.prototype._onDbChange = function (change) {
-  if (this.destroyed) return
-  console.log('CHANGE', change)
-  if (change.method === 'add' && change.key > this.currentTerm) {
-    // A new leader has rising; a new age of tyranny has begun
-    this.currentTerm = change.key
-  }
-
-  if (change.method === 'remove') {
-    if (this.isLeader && change.key === this.electedTerm) {
-      // The new leader has revoked this instance's leadership position
-      this.depose()
-    } else if (!this.isLeader && change.key === this.currentTerm) {
-      // The leader has deposed themself so no one is the leader. Begin the race for election
-      this.elect()
-    }
-  }
-}
-
 TabElect.prototype.elect = function (cb) {
   var self = this
+  cb = cb || noop
   if (self.destroyed) throw new Error('Already destroyed')
   if (self.isLeader) throw new Error('Already the leader')
+  if (self._locking) return setTimeout(cb, 0, null, false)
 
-  var oldTerms
-  var newTerm
-
-  self._db.keys()
-  .then(function (keys) {
-    oldTerms = keys.slice(0) // Copy array
-    newTerm = keys.length === 0 ? 1 : keys.sort().pop() + 1
-    console.log('GOT_TERMS', newTerm, oldTerms)
-    // 'add' operation fails if the key already exists.
-    // The key already exists only if multiple instances try to elect themeselves simultaneously
-    return self._db.add(newTerm, true)
-  })
+  self._db.remove('lock')
   .then(function () {
-    // Remove all old keys/terms. This notifies the old leader their tyranny has ended
-    return Promise.all(oldTerms.map(function (t) { return self._db.remove(t) }))
+    return self._lock(cb)
   })
-  .then(function () {
-    console.log('PRE_ELECT', self.currentTerm, newTerm)
-    if (self.currentTerm > newTerm) {
-      // Someone elected themeselves after us and stole the leader position
-      if (cb) cb(null, false)
-    } else {
-      console.log('ELECT', newTerm)
-      self.isLeader = true
-      self.currentTerm = newTerm
-      self.electedTerm = newTerm
+}
 
-      if (cb) cb(null, true)
-      self.emit('elected')
-    }
+TabElect.prototype._lock = function (cb) {
+  var self = this
+  cb = cb || noop
+  if (self.destroyed) return
+  if (self._locking) return cb(null, false)
+
+  self._locking = true
+  return self._db.add('lock', true)
+  .then(function () {
+    self._locking = false
+    self.isLeader = true
+
+    if (self.destroyed) return self._destroyDB()
+
+    cb(null, true)
+    self.emit('elected')
   })
   .catch(function (err) {
-    console.log('DB ERR', err)
-    if (!cb) return
-    if (err.name === 'ConstraintError') {
-      /*
-       * The db 'add' operation failed because another instance added the same key. That
-       * instance successfully elected itself. This instance did not.
-       */
-      cb(null, false)
-    } else {
-      cb(err)
-    }
+    self._locking = false
+
+    if (self.destroyed) return self._destroyDB()
+
+    // ConstraintError - Add operation failed because key already exists. Someone else is leader
+    if (err.name === 'ConstraintError') cb(null, false)
+    else cb(err)
   })
 }
 
@@ -123,10 +94,25 @@ TabElect.prototype.depose = function () {
   if (this.destroyed) throw new Error('Already destroyed')
   if (!this.isLeader) throw new Error('Can not depose when not the leader')
 
-  console.log('DEPOSE', this.electedTerm)
-  this._db.remove(this.electedTerm)
+  this._db.remove('lock')
+  this._onDepose()
+}
+
+TabElect.prototype._onDepose = function () {
   this.isLeader = false
   this.emit('deposed')
+}
+
+TabElect.prototype._onDbChange = function (change) {
+  if (this.destroyed || change.key !== 'lock' || change.method !== 'remove') return
+
+  if (this.isLeader) {
+    // Someone removed our lock so we are not the leader anymore
+    this._onDepose()
+  } else {
+    // The leaders lock has been removed so attempt to elect ourselves
+    this._lock()
+  }
 }
 
 TabElect.prototype.destroy = function () {
@@ -134,20 +120,29 @@ TabElect.prototype.destroy = function () {
 }
 
 TabElect.prototype._destroy = function (err) {
-  var self = this
-  if (self.destroyed) return
-  self.destroyed = true
-  var wasLeader = self.isLeader
+  if (this.destroyed) return
+  this.destroyed = true
+
+  if (err) this.emit('error', err)
+  this.removeAllListeners()
+
+  this._destroyDB()
   self.isLeader = false
+}
 
-  if (err) self.emit('error', err)
-  self.removeAllListeners()
+TabElect.prototype._destroyDB = function () {
+  var self = this
+  if (!self._db) return
 
-  if (wasLeader) this._db.remove(this.electedTerm, finished)
-  else finished()
+  if (self.isLeader) this._db.remove('lock', finished)
+  else if (!self.locking) finished()
 
   function finished () {
     self._db.close()
     self._db = null
   }
+}
+
+function noop () {
+  // do nothing
 }
