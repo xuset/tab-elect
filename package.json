@@ -37,6 +37,7 @@
     ]
   },
   "dependencies": {
-    "idb-kv-store": "^3.2.1"
+    "idb-kv-store": "^3.2.1",
+    "inherits": "^2.0.3"
   }
 }

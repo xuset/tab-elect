@@ -5,24 +5,28 @@ test('basic', function (t) {
   t.timeoutAfter(3000)
   var e = TabElect('foo')
 
-  e.onelect = function () {
+  e.on('elected', function () {
+    e.depose()
+  })
+
+  e.on('deposed', function () {
     e.destroy()
     t.end()
-  }
+  })
 })
 
 test('one after the other', function (t) {
   t.timeoutAfter(3000)
   var e1 = TabElect('foo')
 
-  e1.onelect = function () {
+  e1.on('elected', function () {
     var e2 = TabElect('foo')
-    e2.onelect = function () {
+    e2.on('elected', function () {
       e1.destroy()
       e2.destroy()
       t.end()
-    }
-  }
+    })
+  })
 })
 
 test('two at a time', function (t) {
@@ -30,8 +34,8 @@ test('two at a time', function (t) {
   var e1 = TabElect('foo')
   var e2 = TabElect('foo')
 
-  e1.onelect = onelect
-  e2.onelect = onelect
+  e1.on('elected', onelect)
+  e2.on('elected', onelect)
 
   function onelect () {
     e1.destroy()
@@ -40,22 +44,22 @@ test('two at a time', function (t) {
   }
 })
 
-test('auto elect after leader steps down', function (t) {
+test('auto elect after leader is destroyed', function (t) {
   t.timeoutAfter(3000)
   var e1 = TabElect('foo')
   var e2 = TabElect('foo')
 
-  e1.onelect = function () {
-    e2.onelect = function () {
+  e1.on('elected', function () {
+    e2.on('elected', function () {
       t.end()
-    }
+    })
     e1.destroy()
-  }
+  })
 
-  e2.onelect = function () {
-    e1.onelect = function () {
+  e2.on('elected', function () {
+    e1.on('elected', function () {
       t.end()
-    }
+    })
     e2.destroy()
-  }
+  })
 })

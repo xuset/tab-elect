@@ -2,9 +2,12 @@
 module.exports = TabElect
 
 var IdbKvStore = require('idb-kv-store')
+var inherits = require('inherits')
+var EventEmitter = require('events').EventEmitter
 
 TabElect.SUPPORT = IdbKvStore.INDEXEDDB_SUPPORT && IdbKvStore.BROADCAST_SUPPORT
 
+inherits(TabElect, EventEmitter)
 function TabElect (name, opts) {
   var self = this
   if (!TabElect.SUPPORT) throw new Error('No indexDB or BroadcastChannel support')
@@ -12,17 +15,24 @@ function TabElect (name, opts) {
   if (!(self instanceof TabElect)) return new TabElect(name, opts)
   if (!opts) opts = {}
 
-  self.id = opts.id || Math.random().toString().substr(2)
+  EventEmitter.call(self)
+
   self.isLeader = false
   self.currentTerm = 0
   self.electedTerm = 0
   self.destroyed = false
-  self.onelect = function () {}
-  self.ondepose = function () {}
 
   self._db = new IdbKvStore(name)
   self._db.on('change', function (change) {
     self._onDbChange(change)
+  })
+
+  self._db.on('error', function (err) {
+    self._destroy(err)
+  })
+
+  self._db.on('close', function () {
+    self._destroy(new Error('IDB database unexpectedly closed'))
   })
 
   self.elect()
@@ -80,7 +90,7 @@ TabElect.prototype.elect = function (cb) {
       self.electedTerm = newTerm
 
       if (cb) cb(null, true)
-      self.onelect()
+      self.emit('elected')
     }
   })
   .catch(function (err) {
@@ -98,27 +108,32 @@ TabElect.prototype.elect = function (cb) {
   })
 }
 
-TabElect.prototype.depose = function (cb) {
+TabElect.prototype.depose = function () {
   if (this.destroyed) throw new Error('Already destroyed')
   if (!this.isLeader) throw new Error('Can not depose when not the leader')
 
   console.log('DEPOSE', this.electedTerm)
-  this._db.remove(this.electedTerm, cb)
+  this._db.remove(this.electedTerm)
   this.isLeader = false
-  if (this.ondepose) this.ondepose()
+  this.emit('deposed')
 }
 
 TabElect.prototype.destroy = function () {
+  this._destroy()
+}
+
+TabElect.prototype._destroy = function (err) {
   var self = this
   if (self.destroyed) return
-
-  self.onelect = null
-  self.ondepose = null
-
-  if (self.isLeader) self.depose(finished)
-  else finished()
-
   self.destroyed = true
+  var wasLeader = self.isLeader
+  self.isLeader = false
+
+  if (err) self.emit('error', err)
+  self.removeAllListeners()
+
+  if (wasLeader) this._db.remove(this.electedTerm, finished)
+  else finished()
 
   function finished () {
     self._db.close()
