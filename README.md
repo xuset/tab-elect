@@ -1,4 +1,4 @@
-# tab-elect
+# tab-elect [![Build Status](https://travis-ci.org/xuset/tab-elect.svg?branch=master)](https://travis-ci.org/xuset/tab-elect)
 
 Leader election for browser tabs and workers. Useful for ensuring a long running job is always being run by a single tab/worker.
 
