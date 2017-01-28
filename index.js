@@ -35,7 +35,7 @@ function TabElect (name, opts) {
   EventEmitter.call(self)
 
   self.dbManager = new TabElectDBManager(name)
-  self.dbManager.on('elect', self._onElect)
+  self.dbManager.on('elected', self._onElect)
   self.dbManager.on('newLeader', self._newLeader)
 
   self.isLeader = false
@@ -94,7 +94,7 @@ TabElect.prototype._destroy = function (err) {
 // Abstracts database interaction for the TabElect class (stateless except for outstanding acks)
 //
 // Emits the following events:
-//  - elect
+//  - elected
 //  - newLeader
 inherits(TabElectDBManager, EventEmitter)
 function TabElectDBManager (name) {
@@ -104,7 +104,9 @@ function TabElectDBManager (name) {
 
   EventEmitter.call(self)
 
+  self.id = genId()
   self.destroyed = false
+
   self._db = new IdbKvStore('tab-elect-' + name)
   self._acks = []
   self._curTerm = null
@@ -140,7 +142,9 @@ function TabElectDBManager (name) {
       // Clear the outstanding acks, since we don't want to depose the new leader
       self._acks = []
 
-      self.emit('newLeader')
+      // Check to see if we were elected as the leader
+      if (change.value === self.id) self.emit('elected')
+      else self.emit('newLeader')
     } else if (change.key.startsWith(RESPONSE_KEY_PREFIX)) {
       var ackId = extractIdFromKey(change.value)
       var ackIndex = self._acks.indexOf(ackId)
@@ -186,10 +190,6 @@ function TabElectDBManager (name) {
 // Writes an ack to the DB to be consumed by the current leader
 // Allows the leader's DB change event and a timeout callback to race
 TabElectDBManager.prototype.sendAck = function () {
-  var genId = function () {
-    return Math.floor(Math.random() * Math.pow(2, 32))
-  }
-
   var self = this
 
   var ackId = genId()
@@ -205,8 +205,10 @@ TabElectDBManager.prototype.sendAck = function () {
 }
 
 TabElectDBManager.prototype.elect = function () {
-  // TODO : correctly handle attempting to win an election
-  // TODO : remove new acks from the DB
+  // Performs an atomic operation that attempts to write its ID to the next term.
+  // On Success => we became leader (action is delegated to the `onDbChange` event handler)
+  // On Failure => someone else became leader
+  self._db.add(TERM_KEY_PREFIX + (self._curTerm + 1), self.id)
 }
 
 TabElectDBManager.prototype._destroy = function (err) {
@@ -221,3 +223,12 @@ TabElectDBManager.prototype._destroy = function (err) {
   this._db.close()
   this._db = null
 }
+
+/***********/
+/* HELPERS */
+/***********/
+
+function genId () {
+  return Math.floor(Math.random() * Math.pow(2, 32))
+}
+
