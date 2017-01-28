@@ -14,7 +14,7 @@ TabElect.SUPPORT = IdbKvStore.INDEXEDDB_SUPPORT && IdbKvStore.BROADCAST_SUPPORT
 
 // TODO : experimentally verify that these numbers aren't bullshit
 var LEADER_REFRESH_INTERVAL = 250  // In milliseconds
-var ACK_TIMEOUT = 250
+var ACK_TIMEOUT = 250  // In milliseconds
 
 var TERM_KEY_PREFIX = 'term-'
 var ACK_KEY_PREFIX = 'ack-'
@@ -35,7 +35,7 @@ function TabElect (name, opts) {
   EventEmitter.call(self)
 
   self.dbManager = new TabElectDBManager(name)
-  self.dbManager.on('elected', self._onElect)
+  self.dbManager.on('elected', self._onElected)
   self.dbManager.on('newLeader', self._newLeader)
 
   self.isLeader = false
@@ -56,15 +56,18 @@ function TabElect (name, opts) {
 }
 
 TabElect.prototype.destroy = function () {
+  // Only destroy the DB if this object was manually destroyed
+  self._db.destroy()
+
   this._destroy()
 }
 
-TabElect.prototype._onElect = function () {
+TabElect.prototype._onElected = function () {
   if (this.destroyed) throw new Error('Already destroyed')
   if (this.isLeader) throw new Error('Already the leader')
 
   this.isLeader = true
-  this.emit('active')
+  this.emit('activate')
 }
 
 TabElect.prototype._newLeader = function () {
@@ -208,7 +211,11 @@ TabElectDBManager.prototype.elect = function () {
   // Performs an atomic operation that attempts to write its ID to the next term.
   // On Success => we became leader (action is delegated to the `onDbChange` event handler)
   // On Failure => someone else became leader
-  self._db.add(TERM_KEY_PREFIX + (self._curTerm + 1), self.id)
+  this._db.add(TERM_KEY_PREFIX + (self._curTerm + 1), self.id)
+}
+
+TabElectDBManager.prototype.destroy = function () {
+  this._destroy()
 }
 
 TabElectDBManager.prototype._destroy = function (err) {
