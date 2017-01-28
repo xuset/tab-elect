@@ -8,8 +8,8 @@ var EventEmitter = require('events').EventEmitter
 
 TabElect.SUPPORT = IdbKvStore.INDEXEDDB_SUPPORT && IdbKvStore.BROADCAST_SUPPORT
 
-// TODO : expirementally verify that these numbers aren't bullshit
-// Consts
+// TODO : experimentally verify that these numbers aren't bullshit
+// Constants
 var LEADER_REFRESH_INTERVAL = 250  // In milliseconds
 var ACK_TIMEOUT = 250
 
@@ -18,17 +18,18 @@ var ACK_TIMEOUT = 250
 /********************/
 
 inherits(TabElect, EventEmitter)
-function TabElect (name, opts = {}) {
+function TabElect (name, opts) {
   var self = this
-  if (!TabElect.SUPPORT) throw new Error('No indexDB or BroadcastChannel support')
+  if (!TabElect.SUPPORT) throw new Error('No IndexedDB or BroadcastChannel support')
   if (typeof name === 'undefined') throw new Error('"name" cannot be undefined')
   if (!(self instanceof TabElect)) return new TabElect(name, opts)
+  opts = opts || {}
 
   EventEmitter.call(self)
 
   self.dbManager = new TabElectDBManager(name)
-  self.dbManager.on('elect', _onElect)
-  self.dbManager.on('depose', _onDepose)
+  self.dbManager.on('elect', self._onElect)
+  self.dbManager.on('newLeader', self._newLeader)
 
   self.isLeader = false
   self.destroyed = false
@@ -39,27 +40,34 @@ function TabElect (name, opts = {}) {
   function onBeforeUnload () {
     self._destroy()
   }
+
+  // Periodically ack the leader to make sure they are alive
+  // NOTE that a randomized timeout may be necessary
+  setInterval(function () {
+    if (!self.isLeader) self.dbManager.sendAck()
+  }, LEADER_REFRESH_INTERVAL)
 }
 
 TabElect.prototype.destroy = function () {
   this._destroy()
 }
 
-TabElect.prototype._onElect = function (cb = noop) {
-  var self = this
-  if (self.destroyed) throw new Error('Already destroyed')
-  if (self.isLeader) throw new Error('Already the leader')
+TabElect.prototype._onElect = function () {
+  if (this.destroyed) throw new Error('Already destroyed')
+  if (this.isLeader) throw new Error('Already the leader')
 
   this.isLeader = true
   this.emit('active')
 }
 
-TabElect.prototype._onDepose = function () {
+TabElect.prototype._newLeader = function () {
   if (this.destroyed) throw new Error('Already destroyed')
-  if (!this.isLeader) throw new Error('Can not depose when not the leader')
 
-  this.isLeader = false
-  this.emit('deactivate')
+  // If we were previously the leader, we have been deposed
+  if (this.isLeader) {
+    this.isLeader = false
+    this.emit('deactivate')
+  }
 }
 
 TabElect.prototype._destroy = function (err) {
@@ -76,16 +84,21 @@ TabElect.prototype._destroy = function (err) {
 /* HELPER CLASSES */
 /******************/
 
-// Manages the database state for the TabElect class
+// Abstracts database interaction for the TabElect class (stateless except for outstanding acks)
+//
+// Emits the following events:
+//   - elect
+//   - newLeader
 inherits(TabElectDBManager, EventEmitter)
 function TabElectDBManager (name) {
   var self = this
-  if (!TabElect.SUPPORT) throw new Error('No indexDB or BroadcastChannel support')
-  if (!(self instanceof TabElectDBManager)) return new TabElectDBManager()
+  if (!TabElect.SUPPORT) throw new Error('No IndexedDB or BroadcastChannel support')
+  if (!(self instanceof TabElectDBManager)) return new TabElectDBManager(name)
 
   EventEmitter.call(self)
 
   self._db = new IdbKvStore('tab-elect-' + name)
+  self._outstanding_ack_id = {}
   self.destroyed = false
 
   // Handle DB and lifecycle events
@@ -100,7 +113,7 @@ function TabElectDBManager (name) {
   /******************/
 
   function onDbChange (change) {
-    // TODO : handle callbacks for acks and leader elections
+    // TODO : handle ack responses and leader elections
   }
 
   function onDbError (err) {
@@ -114,55 +127,27 @@ function TabElectDBManager (name) {
   function onBeforeUnload () {
     self._destroy()
   }
-
-  // Find the leader or elect yourself
-  // NOTE that a randomized timeout may be necessary
-  setInterval(function () {
-    self.dbManager.ackLeader(function (succ, err) {
-      // TODO : attempt leader election on err failure
-    })
-  }, LEADER_REFRESH_INTERVAL)
-  self.dbManager.ackLeader()
 }
 
 // Writes an ack to the DB to be consumed by the listening instance of TabElect
-// cb (succ, err) => succ if leader acks back else err
-TabElectDBManager.prototype.sendAck() {
-  // TODO : write ack to disk and have a failure path through timeout and success path through change notification
+TabElectDBManager.prototype.sendAck = function () {
+  // TODO : write ack to disk and allow a timeout and DB change event to race
 }
 
-TabElectDBManager.prototype.elect() {
+TabElectDBManager.prototype.elect = function () {
   // TODO : correctly handle attempting to win an election
+  // TODO : remove new acks from the DB
 }
 
-TabElectDBManager.prototype._destroy(err) {
+TabElectDBManager.prototype._destroy = function (err) {
   if (this.destroyed) return
   this.destroyed = true
 
   if (err) this.emit('error', err)
   this.removeAllListeners()
 
-  // TODO : clean up the DB connection
-}
-
-// TODO : refactor this into the _destroy method
-TabElectDBManager.prototype._destroyDB = function () {
-  var self = this
-  if (!self._db) return
-
-  if (self.isLeader) this._db.remove('lock', finished)
-  else if (!self.locking) finished()
-
-  function finished () {
-    self._db.close()
-    self._db = null
-  }
-}
-
-/********************/
-/* HELPER FUNCTIONS */
-/********************/
-
-function noop () {
-  // do nothing
+  // Clean up the DB connection
+  if (!this._db) return
+  this._db.close()
+  this._db = null
 }
