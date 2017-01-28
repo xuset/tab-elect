@@ -8,10 +8,17 @@ var EventEmitter = require('events').EventEmitter
 
 TabElect.SUPPORT = IdbKvStore.INDEXEDDB_SUPPORT && IdbKvStore.BROADCAST_SUPPORT
 
+/*************/
+/* CONSTANTS */
+/*************/
+
 // TODO : experimentally verify that these numbers aren't bullshit
-// Constants
 var LEADER_REFRESH_INTERVAL = 250  // In milliseconds
 var ACK_TIMEOUT = 250
+
+var TERM_KEY_PREFIX = 'term-'
+var ACK_KEY_PREFIX = 'ack-'
+var RESPONSE_KEY_PREFIX = 'resp-'
 
 /********************/
 /* PUBLIC INTERFACE */
@@ -87,8 +94,8 @@ TabElect.prototype._destroy = function (err) {
 // Abstracts database interaction for the TabElect class (stateless except for outstanding acks)
 //
 // Emits the following events:
-//   - elect
-//   - newLeader
+//  - elect
+//  - newLeader
 inherits(TabElectDBManager, EventEmitter)
 function TabElectDBManager (name) {
   var self = this
@@ -97,9 +104,10 @@ function TabElectDBManager (name) {
 
   EventEmitter.call(self)
 
-  self._db = new IdbKvStore('tab-elect-' + name)
-  self._outstanding_ack_id = {}
   self.destroyed = false
+  self._db = new IdbKvStore('tab-elect-' + name)
+  self._acks = []
+  self._curTerm = null
 
   // Handle DB and lifecycle events
   self._db.on('change', onDbChange)
@@ -108,12 +116,43 @@ function TabElectDBManager (name) {
 
   addEventListener('beforeunload', onBeforeUnload)
 
+  var extractIdFromKey = function (key) {
+    parseInt(key.substring(key.lastIndexOf('-')))
+  }
+
   /******************/
   /* EVENT HANDLERS */
   /******************/
 
   function onDbChange (change) {
-    // TODO : handle ack responses and leader elections
+    if (self.destroyed) return
+
+    // Handle new terms and ack responses
+    if (change.key.startsWith(TERM_KEY_PREFIX)) {
+      var newTerm = extractIdFromKey(change.value)
+
+      // Protects against duplicate or out of order messages
+      if (newTerm <= self._curTerm) return
+
+      // We are in a new term now
+      self._curTerm = newTerm
+
+      // Clear the outstanding acks, since we don't want to depose the new leader
+      self._acks = []
+
+      self.emit('newLeader')
+    } else if (change.key.startsWith(RESPONSE_KEY_PREFIX)) {
+      var ackId = extractIdFromKey(change.value)
+      var ackIndex = self._acks.indexOf(ackId)
+
+      // Remove the outstanding ack if it exists
+      if (ackIndex !== -1) self._acks.splice(ackIndex, 1)
+    } else if (change.key.startsWith(ACK_KEY_PREFIX)) {
+      // Ignore acks
+      return
+    } else {
+      throw Error('Invalid key ' + change.key)
+    }
   }
 
   function onDbError (err) {
@@ -127,6 +166,21 @@ function TabElectDBManager (name) {
   function onBeforeUnload () {
     self._destroy()
   }
+
+  // Try to get the current term
+  // If no leader exists, try to win an election (avoids waiting for the ack timeout)
+  self._db.keys(function (err, keys) {
+    if (err) throw err
+
+    self._curTerm = keys.filter(function (k) {
+      k.startsWith(TERM_KEY_PREFIX)
+    }).map(extractIdFromKey).sort().pop()
+
+    if (self._curTerm === undefined) {
+      self._curTerm = 0
+      self.elect()
+    }
+  })
 }
 
 // Writes an ack to the DB to be consumed by the listening instance of TabElect
