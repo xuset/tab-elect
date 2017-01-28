@@ -183,9 +183,25 @@ function TabElectDBManager (name) {
   })
 }
 
-// Writes an ack to the DB to be consumed by the listening instance of TabElect
+// Writes an ack to the DB to be consumed by the current leader
+// Allows the leader's DB change event and a timeout callback to race
 TabElectDBManager.prototype.sendAck = function () {
-  // TODO : write ack to disk and allow a timeout and DB change event to race
+  var genId = function () {
+    return Math.floor(Math.random() * Math.pow(2, 32))
+  }
+
+  var self = this
+
+  var ackId = genId()
+  self._acks.append(ackId)
+  self._db.set(ACK_KEY_PREFIX + ackId, function (err) {
+    if (err) throw err
+
+    // Set a timeout to trigger an election if there is no response to this ack
+    setTimeout(function () {
+      if (self._acks.indexOf(ackId) !== -1) self.elect()
+    }, ACK_TIMEOUT)
+  })
 }
 
 TabElectDBManager.prototype.elect = function () {
