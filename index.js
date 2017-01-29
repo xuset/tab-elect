@@ -14,11 +14,11 @@ TabElect.SUPPORT = IdbKvStore.INDEXEDDB_SUPPORT && IdbKvStore.BROADCAST_SUPPORT
 
 // TODO : experimentally verify that these numbers aren't bullshit
 var LEADER_REFRESH_INTERVAL = 250  // In milliseconds
-var ACK_TIMEOUT = 250  // In milliseconds
+var PING_TIMEOUT = 250  // In milliseconds
 
 var TERM_KEY_PREFIX = 'term-'
+var PING_KEY_PREFIX = 'ping-'
 var ACK_KEY_PREFIX = 'ack-'
-var RESPONSE_KEY_PREFIX = 'resp-'
 
 /********************/
 /* PUBLIC INTERFACE */
@@ -48,10 +48,10 @@ function TabElect (name, opts) {
     self._destroy()
   }
 
-  // Periodically ack the leader to make sure they are alive
+  // Periodically ping the leader to make sure they are alive
   // NOTE that a randomized timeout may be necessary
   setInterval(function () {
-    if (!self.isLeader) self.dbManager.sendAck()
+    if (!self.isLeader) self.dbManager.sendPing()
   }, LEADER_REFRESH_INTERVAL)
 }
 
@@ -94,7 +94,7 @@ TabElect.prototype._destroy = function (err) {
 /* HELPER CLASSES */
 /******************/
 
-// Abstracts database interaction for the TabElect class (stateless except for outstanding acks)
+// Abstracts database interaction for the TabElect class
 //
 // Emits the following events:
 //  - elected
@@ -111,7 +111,7 @@ function TabElectDBManager (name) {
   self.destroyed = false
 
   self._db = new IdbKvStore('tab-elect-' + name)
-  self._acks = []
+  self._pings = []
   self._curTerm = null
 
   // Handle DB and lifecycle events
@@ -132,7 +132,7 @@ function TabElectDBManager (name) {
   function onDbChange (change) {
     if (self.destroyed) return
 
-    // Handle new terms and ack responses
+    // Handle new terms, pings, and acks
     if (change.key.startsWith(TERM_KEY_PREFIX)) {
       var newTerm = extractIdFromKey(change.value)
 
@@ -142,19 +142,19 @@ function TabElectDBManager (name) {
       // We are in a new term now
       self._curTerm = newTerm
 
-      // Clear the outstanding acks, since we don't want to depose the new leader
-      self._acks = []
+      // Clear the outstanding pings, since we don't want to depose the new leader
+      self._pings = []
 
       // Check to see if we were elected as the leader
       if (change.value === self.id) self.emit('elected')
       else self.emit('newLeader')
-    } else if (change.key.startsWith(RESPONSE_KEY_PREFIX)) {
-      var ackId = extractIdFromKey(change.value)
-      var ackIndex = self._acks.indexOf(ackId)
+    } else if (change.key.startsWith(ACK_KEY_PREFIX)) {
+      var pingId = extractIdFromKey(change.value)
+      var pingIndex = self._pings.indexOf(pingId)
 
       // Remove the outstanding ack if it exists
-      if (ackIndex !== -1) self._acks.splice(ackIndex, 1)
-    } else if (change.key.startsWith(ACK_KEY_PREFIX)) {
+      if (pingIndex !== -1) self._pings.splice(pingIndex, 1)
+    } else if (change.key.startsWith(PING_KEY_PREFIX)) {
       // Ignore acks
       return
     } else {
@@ -175,7 +175,7 @@ function TabElectDBManager (name) {
   }
 
   // Try to get the current term
-  // If no leader exists, try to win an election (avoids waiting for the ack timeout)
+  // If no leader exists, try to win an election (avoids waiting for the ping timeout)
   self._db.keys(function (err, keys) {
     if (err) throw err
 
@@ -190,20 +190,20 @@ function TabElectDBManager (name) {
   })
 }
 
-// Writes an ack to the DB to be consumed by the current leader
+// Writes a ping to the DB to be consumed by the current leader
 // Allows the leader's DB change event and a timeout callback to race
-TabElectDBManager.prototype.sendAck = function () {
+TabElectDBManager.prototype.sendPing = function () {
   var self = this
 
-  var ackId = genId()
-  self._acks.append(ackId)
-  self._db.set(ACK_KEY_PREFIX + ackId, function (err) {
+  var pingId = genId()
+  self._pings.append(pingId)
+  self._db.set(PING_KEY_PREFIX + pingId, function (err) {
     if (err) throw err
 
     // Set a timeout to trigger an election if there is no response to this ack
     setTimeout(function () {
-      if (self._acks.indexOf(ackId) !== -1) self.elect()
-    }, ACK_TIMEOUT)
+      if (self._pings.indexOf(pingId) !== -1) self.elect()
+    }, PING_TIMEOUT)
   })
 }
 
