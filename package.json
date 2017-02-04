@@ -1,6 +1,6 @@
 {
   "name": "tab-elect",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Leader election for browser tabs and workers",
   "main": "index.js",
   "scripts": {
