@@ -1,22 +1,32 @@
-# tab-elect [![Build Status](https://travis-ci.org/xuset/tab-elect.svg?branch=master)](https://travis-ci.org/xuset/tab-elect)
+# tab-elect [![Build Status][travis-image]][travis-url] [![npm][npm-image]][npm-url]
 
-Leader election for browser tabs and workers. Useful for ensuring a long running job is always being run by a single tab/worker.
+[npm-image]: https://img.shields.io/npm/v/tab-elect.svg?style=flat
+[npm-url]: https://npmjs.org/package/tab-elect
+[travis-image]: https://travis-ci.org/xuset/tab-elect.svg?branch=master
+[travis-url]: https://travis-ci.org/xuset/tab-elect
 
-When a new instance of tab-elect is instantiated, it elects itself the leader. If the leader ever gets destroyed or it's tab is closed, a new leader is automatically elected.
 
-There is one caveat, during the transition from an old leader to a new one, for a short amount of time, both instances will think they are a leader. tab-elect does not attempt to solve this problem.
+#### Leader election for browser tabs
+
+[![Sauce Test Status](https://saucelabs.com/browser-matrix/xuset-tab-elect.svg)](https://saucelabs.com/u/xuset-tab-elect)
+
+Tab-elect solves the problem of only wanting one browser tab to run a job, and ensure that there is always one browser tab running it even if the previous running tab was closed. This package takes care of the inter-tab communication required to elect one tab as the leader and ensure that there is always a leader even if the previous leader quits. A browser tab gets notified when it has been elected as the new leader, and this allows the tab to run whatever code the leader should run. When another tab takes the leadership position, the previous leader gets notified that it has been deposed.
+
+Tab-elect uses the atomic operations of IndexedDB to ensure that only one leader gets elected even if many candidates attempt to elect themselves simultaneously. BroadcastChannels are used to broadcast when a new leader has taken over; because of this there is a short amount of time during the transition from one leader to another that both instances think they are the leader.
 
 ## Usage
 
 ```js
 var te = TabElect('campain name')
 
+console.log('Am I the leader?', te.isLeader)
+
 te.on('elected', function () {
-  console.log('I am the leader!', te.isLeader)
+  console.log('I am the leader!')
 })
 
 te.on('deposed', function () {
-  console.log('I am not the leader', te.isLeader)
+  console.log('I am no longer the leader')
 })
 
 te.on('error', function (err) {
@@ -28,7 +38,7 @@ te.on('error', function (err) {
 
 ### `var te = new TabElect(name)`
 
-Constructs a new TabElect instance with the given name. `name` is used to group instances together so instances with different names will have different elections. Upon instantiation, tab-elect attempts to become the leader.
+Constructs a new TabElect instance with the given name. `name` is used to group instances together so instances with different names will have different elections.
 
 ### te.isLeader
 
@@ -44,7 +54,7 @@ Forces the instance to relinquish it's leadership status. All other tab-elect in
 
 ### `te.destroy()`
 
-Destroys the instance and frees all internal resources. No more events will be emitted.
+Destroys the instance and frees all internal resources. If this instance was the leader than a new leader will be elected. No more events will be emitted.
 
 ## Events
 
