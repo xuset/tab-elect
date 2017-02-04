@@ -6,7 +6,7 @@ test('basic', function (t) {
   var e = TabElect('foo1')
 
   e.on('elected', function () {
-    e.depose()
+    e.stepDown()
   })
 
   e.on('deposed', function () {

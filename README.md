@@ -38,9 +38,9 @@ A boolean that indicates if this instance is the leader.
 
 Attempt to elect this instance as the leader. `cb` is called with `cb(err, elected)` where `err` is null if there were no errors and `elected` is true if the instance is now the leader. This method throws an exception if it is called while the instance is the leader.
 
-### `te.depose()`
+### `te.stepDown()`
 
-Forces the instance to relinquish it's leadership status. All other instances will attempt to become the next leader. If the instance is not the leader then this method throws an exception.
+Forces the instance to relinquish it's leadership status. All other tab-elect instances will attempt to become the next leader. If the instance is not the leader then this method throws an exception.
 
 ### `te.destroy()`
 

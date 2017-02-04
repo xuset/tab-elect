@@ -90,9 +90,9 @@ TabElect.prototype._lock = function (cb) {
   })
 }
 
-TabElect.prototype.depose = function () {
+TabElect.prototype.stepDown = function () {
   if (this.destroyed) throw new Error('Already destroyed')
-  if (!this.isLeader) throw new Error('Can not depose when not the leader')
+  if (!this.isLeader) throw new Error('Can not step down when not the leader')
 
   this._db.remove('lock')
   this._onDepose()
