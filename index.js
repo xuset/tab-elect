@@ -24,7 +24,7 @@ function TabElect (name, opts) {
   self._locking = false
 
   self._db = new IdbKvStore('tab-elect-' + name)
-  self._db.on('change', onDbChange)
+  self._db.on('remove', onDbRemove)
   self._db.on('error', onDbError)
   self._db.on('close', onDbClose)
 
@@ -32,8 +32,8 @@ function TabElect (name, opts) {
 
   self.elect()
 
-  function onDbChange (change) {
-    self._onDbChange(change)
+  function onDbRemove (change) {
+    self._onDbRemove(change)
   }
 
   function onDbError (err) {
@@ -103,8 +103,8 @@ TabElect.prototype._onDepose = function () {
   this.emit('deposed')
 }
 
-TabElect.prototype._onDbChange = function (change) {
-  if (this.destroyed || change.key !== 'lock' || change.method !== 'remove') return
+TabElect.prototype._onDbRemove = function (change) {
+  if (this.destroyed || change.key !== 'lock') return
 
   if (this.isLeader) {
     // Someone removed our lock so we are not the leader anymore

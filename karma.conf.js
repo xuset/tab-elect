@@ -9,7 +9,11 @@ module.exports = function (config) {
 
     // list of files / patterns to load in the browser
     files: [
-      'test.js'
+      'test.js',
+      {
+        pattern: 'index.js',
+        included: false
+      }
     ],
 
     // list of files to exclude
@@ -43,6 +47,8 @@ module.exports = function (config) {
 
     // enable / disable watching file and executing tests whenever any file changes
     autoWatch: true,
+
+    browserNoActivityTimeout: process.env.CI ? 300 * 1000 : 10 * 1000,
 
     // start these browsers
     // available browser launchers: https://npmjs.org/browse/keyword/karma-launcher
