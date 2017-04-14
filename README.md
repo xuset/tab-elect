@@ -1,5 +1,7 @@
 # tab-elect [![Build Status][travis-image]][travis-url] [![npm][npm-image]][npm-url]
 
+[![Greenkeeper badge](https://badges.greenkeeper.io/xuset/tab-elect.svg)](https://greenkeeper.io/)
+
 [npm-image]: https://img.shields.io/npm/v/tab-elect.svg?style=flat
 [npm-url]: https://npmjs.org/package/tab-elect
 [travis-image]: https://travis-ci.org/xuset/tab-elect.svg?branch=master
