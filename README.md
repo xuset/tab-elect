@@ -14,6 +14,8 @@ Tab-elect solves the problem of only wanting one browser tab to run a job, and e
 
 Tab-elect uses the atomic operations of IndexedDB to ensure that only one leader gets elected even if many candidates attempt to elect themselves simultaneously. BroadcastChannels are used to broadcast when a new leader has taken over; because of this there is a short amount of time during the transition from one leader to another that both instances think they are the leader.
 
+This package should be bundled together with something like WebPack or Browserify since it contains some NPM dependencies.
+
 ## Usage
 
 ```js
