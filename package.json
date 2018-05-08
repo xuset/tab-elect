@@ -39,7 +39,7 @@
     "watchify": "^3.9.0"
   },
   "dependencies": {
-    "idb-kv-store": "^4.3.1",
+    "idb-kv-store": "4.3.1",
     "inherits": "^2.0.3"
   }
 }
